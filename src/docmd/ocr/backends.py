@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
-import os
 
 import numpy as np
 
@@ -82,10 +82,35 @@ class PaddleOCRBackend:
             )
         return prepared
 
-    def recognize(self, image: np.ndarray) -> OCRResult:
+    def _recognize_chunk(self, image: np.ndarray, bbox: list[float]) -> OCRResult:
         prepared = self._prepare_image(image)
         result = self.recognizer.predict(prepared)
-        return _recognition_results_to_ocr_result(result, self.name, prepared.shape[:2])
+        return _recognition_results_to_ocr_result(result, self.name, bbox)
+
+    def recognize(self, image: np.ndarray) -> OCRResult:
+        line_texts: list[str] = []
+        confidences: list[float] = []
+        lines: list[dict[str, object]] = []
+
+        for line_image, line_bbox in _split_text_lines(image):
+            chunk_texts: list[str] = []
+            for chunk_image, chunk_bbox in _split_line_chunks(line_image, line_bbox):
+                result = self._recognize_chunk(chunk_image, chunk_bbox)
+                if not result.text:
+                    continue
+                chunk_texts.append(result.text)
+                if result.confidence is not None:
+                    confidences.append(result.confidence)
+                lines.extend(result.lines)
+            if chunk_texts:
+                line_texts.append(" ".join(chunk_texts))
+
+        return OCRResult(
+            text="\n".join(line_texts).strip(),
+            confidence=(sum(confidences) / len(confidences) if confidences else None),
+            backend=self.name,
+            lines=lines,
+        )
 
 
 def create_ocr_backend(name: str = "paddleocr", **kwargs: object) -> OCRBackend:
@@ -100,13 +125,11 @@ def create_ocr_backend(name: str = "paddleocr", **kwargs: object) -> OCRBackend:
 def _recognition_results_to_ocr_result(
     results: object,
     backend_name: str,
-    image_shape: tuple[int, int] | None = None,
+    bbox: list[float] | None = None,
 ) -> OCRResult:
     texts: list[str] = []
     confidences: list[float] = []
     lines: list[dict[str, object]] = []
-    height, width = image_shape or (0, 0)
-    bbox = [0.0, 0.0, float(width), float(height)] if width and height else None
 
     for result in results or []:
         payload = getattr(result, "json", result)
@@ -131,6 +154,99 @@ def _recognition_results_to_ocr_result(
     )
 
 
+def _threshold_text(image: np.ndarray) -> np.ndarray:
+    import cv2
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+    _value, threshold = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    return threshold
+
+
+def _projection_bands(has_ink: np.ndarray, max_gap: int, min_len: int) -> list[tuple[int, int]]:
+    bands: list[tuple[int, int]] = []
+    start: int | None = None
+    last: int | None = None
+    gap = 0
+    for index, value in enumerate(has_ink):
+        if bool(value):
+            if start is None:
+                start = index
+            last = index
+            gap = 0
+        elif start is not None:
+            gap += 1
+            if gap > max_gap:
+                if last is not None and last - start + 1 >= min_len:
+                    bands.append((start, last + 1))
+                start = None
+                last = None
+                gap = 0
+    if start is not None and last is not None and last - start + 1 >= min_len:
+        bands.append((start, last + 1))
+    return bands
+
+
+# ponytail: whitespace chunker keeps PP-OCR rec usable without adding a text detector.
+# Upgrade to a stronger local line segmenter if noisy scans need it.
+def _split_text_lines(image: np.ndarray) -> list[tuple[np.ndarray, list[float]]]:
+    height, width = image.shape[:2]
+    threshold = _threshold_text(image)
+    min_row_ink = max(1, int(width * 0.003))
+    row_has_ink = (threshold > 0).sum(axis=1) > min_row_ink
+    bands = _projection_bands(row_has_ink, max_gap=max(1, height // 30), min_len=2)
+    if not bands:
+        return [(image, [0.0, 0.0, float(width), float(height)])]
+
+    lines: list[tuple[np.ndarray, list[float]]] = []
+    for top, bottom in bands:
+        pad = 2
+        y1 = max(0, top - pad)
+        y2 = min(height, bottom + pad)
+        lines.append((image[y1:y2, :], [0.0, float(y1), float(width), float(y2)]))
+    return lines
+
+
+def _split_line_chunks(
+    image: np.ndarray,
+    line_bbox: list[float],
+    max_width_ratio: float = 10.0,
+) -> list[tuple[np.ndarray, list[float]]]:
+    height, width = image.shape[:2]
+    if width <= max(32, int(max_width_ratio * max(1, height))):
+        return [(image, line_bbox)]
+
+    threshold = _threshold_text(image)
+    col_has_ink = (threshold > 0).sum(axis=0) > 0
+    word_bands = _projection_bands(col_has_ink, max_gap=2, min_len=1)
+    if not word_bands:
+        return [(image, line_bbox)]
+
+    max_width = max(32, int(max_width_ratio * max(1, height)))
+    chunks: list[tuple[int, int]] = []
+    current_start: int | None = None
+    current_end: int | None = None
+    for start, end in word_bands:
+        if current_start is None:
+            current_start, current_end = start, end
+        elif end - current_start <= max_width:
+            current_end = end
+        else:
+            chunks.append((current_start, int(current_end)))
+            current_start, current_end = start, end
+    if current_start is not None and current_end is not None:
+        chunks.append((current_start, current_end))
+
+    out: list[tuple[np.ndarray, list[float]]] = []
+    x_offset, y1, _x2, y2 = line_bbox
+    for start, end in chunks:
+        pad = 4
+        x1 = max(0, start - pad)
+        x2 = min(width, end + pad)
+        out.append((image[:, x1:x2], [x_offset + x1, y1, x_offset + x2, y2]))
+    return out
+
+
 def _to_float(value: object) -> float | None:
     try:
         return float(value) if value is not None else None
@@ -142,11 +258,18 @@ def _self_check() -> None:
     result = _recognition_results_to_ocr_result(
         [{"res": {"rec_text": "Hello world", "rec_score": 0.9}}],
         "paddleocr-rec",
-        (32, 128),
+        [0.0, 0.0, 128.0, 32.0],
     )
     assert result.text == "Hello world"
     assert result.confidence == 0.9
     assert result.lines[0]["bbox"] == [0.0, 0.0, 128.0, 32.0]
+
+    image = np.full((14, 487, 3), 255, dtype=np.uint8)
+    image[4:10, 5:55] = 0
+    image[4:10, 160:210] = 0
+    image[4:10, 320:370] = 0
+    chunks = _split_line_chunks(image, [0.0, 0.0, 487.0, 14.0])
+    assert len(chunks) == 3
 
 
 if __name__ == "__main__":

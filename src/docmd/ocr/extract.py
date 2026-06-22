@@ -32,7 +32,7 @@ def run_region_ocr(
     backend: OCRBackend | None = None,
     backend_name: str = "paddleocr",
     use_masks: bool = False,
-    crop_pad: int = 8,
+    crop_pad: int = 4,
 ) -> PageResult:
     image = read_image(page.image_path)
     backend = backend or create_ocr_backend(backend_name)

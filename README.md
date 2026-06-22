@@ -3,7 +3,7 @@
 This project converts scanned document pages into Markdown with a small, reproducible pipeline:
 
 1. YOLO layout detection or segmentation.
-2. PaddleOCR PP-OCRv6 tiny OCR.
+2. PaddleOCR PP-OCRv6 OCR.
 3. Geometry-based reading order.
 4. Markdown rendering.
 
@@ -20,7 +20,7 @@ models/yolo26m.pt                       # base detection model for training
 models/yolo26m-seg.pt                   # base segmentation model for training
 ```
 
-OCR uses PaddleOCR with `text_detection_model_name="PP-OCRv6_tiny_det"`, matching the safetensors model at https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_det_safetensors. Text recognition uses the matching `PP-OCRv6_tiny_rec` model because detection alone does not produce text.
+OCR uses PaddleOCR with `text_detection_model_name="PP-OCRv6_tiny_det"`, matching the safetensors model at https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_det_safetensors. Text recognition uses `PP-OCRv6_medium_rec` because detection alone does not produce text.
 
 ## Setup and Demo
 
@@ -38,7 +38,7 @@ Windows:
 run_demo.bat
 ```
 
-The demo uses images in `demo_samples/`, packaged YOLO weights from `models/`, and PaddleOCR PP-OCRv6 tiny OCR. Outputs are written to `outputs/demo_runs/` and are intentionally gitignored.
+The demo uses images in `demo_samples/`, packaged YOLO weights from `models/`, and PaddleOCR PP-OCRv6 OCR. Outputs are written to `outputs/demo_runs/` and are intentionally gitignored.
 
 For GPU runs, install a CUDA-compatible PyTorch build for your machine if the default wheel is not enough.
 

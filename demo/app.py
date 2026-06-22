@@ -104,7 +104,7 @@ def main() -> None:
     samples = image_paths(sample_dir) if sample_dir.exists() else []
 
     with st.sidebar:
-        st.caption("Defaults use packaged YOLO weights and PaddleOCR PP-OCRv6 tiny OCR.")
+        st.caption("Defaults use packaged YOLO weights and PaddleOCR PP-OCRv6 OCR.")
         st.header("Input")
         source = st.radio("Page source", ["Sample", "Upload", "Paste"], horizontal=True)
         selected_sample = None

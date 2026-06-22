@@ -37,7 +37,7 @@ class PaddleOCRBackend:
         self,
         device: str | None = None,
         text_detection_model_name: str = "PP-OCRv6_tiny_det",
-        text_recognition_model_name: str = "PP-OCRv6_tiny_rec",
+        text_recognition_model_name: str = "PP-OCRv6_medium_rec",
     ) -> None:
         cache_root = Path("outputs/model_cache").resolve()
         os.environ.setdefault("PADDLE_PDX_CACHE_HOME", str(cache_root / "paddlex"))

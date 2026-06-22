@@ -1,0 +1,9 @@
+sample_dir: demo_samples
+outputs_dir: outputs/demo_runs
+weights:
+  detection: models/yolo26m_detection_docaug_b8.pt
+  segmentation: models/yolo26m_segmentation_proto.pt
+device: auto
+conf: 0.25
+imgsz: 1024
+ocr_backend: paddleocr

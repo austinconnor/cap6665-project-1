@@ -1,0 +1,16 @@
+.uv-cache/
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.ruff_cache/
+.env.agents/
+
+outputs/
+runs/
+data/_raw/
+data/train/
+data/val/
+data/test/
+data/yolo_detection/
+data/yolo_segmentation/

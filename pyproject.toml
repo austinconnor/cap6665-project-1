@@ -1,0 +1,41 @@
+[project]
+name = "docmd-reconstruction"
+version = "0.1.0"
+description = "Document layout detection, OCR, reading-order, and Markdown reconstruction for a computer vision class project."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.24",
+    "opencv-python>=4.8",
+    "pillow>=10.0",
+    "pyyaml>=6.0",
+    "requests>=2.31",
+    "rapidfuzz>=3.6",
+    "torch>=2.0",
+    "transformers>=4.52",
+    "paddleocr>=3.7.0",
+    "ultralytics>=8.3",
+    "streamlit>=1.35",
+    "tensorboard>=2.20",
+    "datasets>=2.18",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.4",
+    "pytest>=8.0",
+]
+
+[tool.uv]
+package = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

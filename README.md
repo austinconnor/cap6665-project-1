@@ -3,7 +3,7 @@
 This project converts scanned document pages into Markdown with a small, reproducible pipeline:
 
 1. YOLO layout detection or segmentation.
-2. PaddleOCR PP-OCRv6 OCR.
+2. PP-OCRv6 medium text recognition on YOLO crops.
 3. Geometry-based reading order.
 4. Markdown rendering.
 
@@ -11,16 +11,17 @@ No VLM comparison path is included.
 
 ## Included Models
 
-The repo packages the small YOLO weights needed for demo and training startup:
+The repo packages the model files needed for demo and training startup:
 
 ```text
 models/yolo26m_detection_docaug_b8.pt   # trained detection checkpoint
 models/yolo26m_segmentation_proto.pt    # trained segmentation checkpoint
 models/yolo26m.pt                       # base detection model for training
 models/yolo26m-seg.pt                   # base segmentation model for training
+models/ocr/PP-OCRv6_medium_rec_safetensors/model.safetensors  # OCR recognizer
 ```
 
-OCR uses PaddleOCR with `text_detection_model_name="PP-OCRv6_tiny_det"`, matching the safetensors model at https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_det_safetensors. Text recognition uses `PP-OCRv6_medium_rec` because detection alone does not produce text.
+Layout detection is done by YOLO. OCR uses the packaged `PP-OCRv6_medium_rec_safetensors` recognition model from `models/ocr/` to read each YOLO crop, so the demo does not need to download OCR weights or use a Hugging Face token.
 
 ## Setup and Demo
 
@@ -38,7 +39,7 @@ Windows:
 run_demo.bat
 ```
 
-The demo uses images in `demo_samples/`, packaged YOLO weights from `models/`, and PaddleOCR PP-OCRv6 OCR. Outputs are written to `outputs/demo_runs/` and are intentionally gitignored.
+The demo uses images in `demo_samples/`, packaged YOLO weights from `models/`, and packaged PP-OCRv6 medium recognition. Outputs are written to `outputs/demo_runs/` and are intentionally gitignored.
 
 For GPU runs, install a CUDA-compatible PyTorch build for your machine if the default wheel is not enough.
 

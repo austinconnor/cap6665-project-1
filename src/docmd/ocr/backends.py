@@ -8,6 +8,9 @@ import os
 import numpy as np
 
 
+DEFAULT_REC_MODEL_DIR = Path("models/ocr/PP-OCRv6_medium_rec_safetensors")
+
+
 @dataclass(slots=True)
 class OCRResult:
     text: str
@@ -31,31 +34,30 @@ class StubOCRBackend:
 
 
 class PaddleOCRBackend:
-    name = "paddleocr"
+    name = "paddleocr-rec"
 
     def __init__(
         self,
         device: str | None = None,
-        text_detection_model_name: str = "PP-OCRv6_tiny_det",
-        text_recognition_model_name: str = "PP-OCRv6_medium_rec",
+        model_dir: str | Path = DEFAULT_REC_MODEL_DIR,
     ) -> None:
+        model_dir = Path(model_dir).resolve()
+        if not model_dir.exists():
+            raise FileNotFoundError(f"Packaged OCR recognition model not found: {model_dir}")
+
         cache_root = Path("outputs/model_cache").resolve()
         os.environ.setdefault("PADDLE_PDX_CACHE_HOME", str(cache_root / "paddlex"))
         os.environ.setdefault("HF_HOME", str(cache_root / "huggingface"))
 
-        from paddleocr import PaddleOCR
+        from paddleocr import TextRecognition
 
         kwargs: dict[str, Any] = {
-            "text_detection_model_name": text_detection_model_name,
-            "text_recognition_model_name": text_recognition_model_name,
-            "use_doc_orientation_classify": False,
-            "use_doc_unwarping": False,
-            "use_textline_orientation": False,
+            "model_dir": str(model_dir),
             "engine": "transformers",
         }
         if device:
             kwargs["device"] = device
-        self.ocr = PaddleOCR(**kwargs)
+        self.recognizer = TextRecognition(**kwargs)
 
     @staticmethod
     def _prepare_image(image: np.ndarray) -> np.ndarray:
@@ -81,63 +83,52 @@ class PaddleOCRBackend:
         return prepared
 
     def recognize(self, image: np.ndarray) -> OCRResult:
-        results = self.ocr.predict(self._prepare_image(image))
-        return _paddle_results_to_ocr_result(results, self.name)
+        prepared = self._prepare_image(image)
+        result = self.recognizer.predict(prepared)
+        return _recognition_results_to_ocr_result(result, self.name, prepared.shape[:2])
 
 
 def create_ocr_backend(name: str = "paddleocr", **kwargs: object) -> OCRBackend:
     normalized = name.lower()
-    if normalized in {"paddle", "paddleocr"}:
+    if normalized in {"paddle", "paddleocr", "paddleocr-rec"}:
         return PaddleOCRBackend(**kwargs)
     if normalized == "stub":
         return StubOCRBackend()
     raise ValueError(f"Unsupported OCR backend: {name}")
 
 
-def _paddle_results_to_ocr_result(results: object, backend_name: str) -> OCRResult:
+def _recognition_results_to_ocr_result(
+    results: object,
+    backend_name: str,
+    image_shape: tuple[int, int] | None = None,
+) -> OCRResult:
     texts: list[str] = []
     confidences: list[float] = []
     lines: list[dict[str, object]] = []
+    height, width = image_shape or (0, 0)
+    bbox = [0.0, 0.0, float(width), float(height)] if width and height else None
+
     for result in results or []:
         payload = getattr(result, "json", result)
         if isinstance(payload, dict) and isinstance(payload.get("res"), dict):
             payload = payload["res"]
         if not isinstance(payload, dict):
             continue
-        rec_texts = payload.get("rec_texts") or []
-        rec_scores = payload.get("rec_scores") or []
-        rec_polys = payload.get("rec_polys") or payload.get("dt_polys") or []
-        for index, raw_text in enumerate(rec_texts):
-            text = str(raw_text).strip()
-            if not text:
-                continue
-            score = _at(rec_scores, index)
-            polygon = _at(rec_polys, index)
-            confidence = _to_float(score)
-            texts.append(text)
-            if confidence is not None:
-                confidences.append(confidence)
-            lines.append(
-                {
-                    "text": text,
-                    "confidence": confidence,
-                    "bbox": _quad_to_bbox(polygon),
-                    "polygon": _flatten_quad(polygon),
-                }
-            )
+        text = str(payload.get("rec_text") or "").strip()
+        if not text:
+            continue
+        confidence = _to_float(payload.get("rec_score"))
+        texts.append(text)
+        if confidence is not None:
+            confidences.append(confidence)
+        lines.append({"text": text, "confidence": confidence, "bbox": bbox, "polygon": None})
+
     return OCRResult(
         text=" ".join(texts).strip(),
         confidence=(sum(confidences) / len(confidences) if confidences else None),
         backend=backend_name,
         lines=lines,
     )
-
-
-def _at(values: object, index: int) -> object | None:
-    try:
-        return values[index]  # type: ignore[index]
-    except Exception:
-        return None
 
 
 def _to_float(value: object) -> float | None:
@@ -147,43 +138,15 @@ def _to_float(value: object) -> float | None:
         return None
 
 
-def _flatten_quad(box: object) -> list[float] | None:
-    try:
-        points = np.asarray(box, dtype=float).reshape(-1, 2)
-    except Exception:
-        return None
-    return [float(v) for point in points for v in point]
-
-
-def _quad_to_bbox(box: object) -> list[float] | None:
-    try:
-        points = np.asarray(box, dtype=float).reshape(-1, 2)
-    except Exception:
-        return None
-    xs = points[:, 0]
-    ys = points[:, 1]
-    return [float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max())]
-
-
 def _self_check() -> None:
-    result = _paddle_results_to_ocr_result(
-        [
-            {
-                "res": {
-                    "rec_texts": ["Hello", "world"],
-                    "rec_scores": [0.9, 0.8],
-                    "rec_polys": [
-                        [[0, 0], [10, 0], [10, 5], [0, 5]],
-                        [[0, 6], [10, 6], [10, 11], [0, 11]],
-                    ],
-                }
-            }
-        ],
-        "paddleocr",
+    result = _recognition_results_to_ocr_result(
+        [{"res": {"rec_text": "Hello world", "rec_score": 0.9}}],
+        "paddleocr-rec",
+        (32, 128),
     )
     assert result.text == "Hello world"
-    assert result.confidence is not None and abs(result.confidence - 0.85) < 1e-9
-    assert result.lines[0]["bbox"] == [0.0, 0.0, 10.0, 5.0]
+    assert result.confidence == 0.9
+    assert result.lines[0]["bbox"] == [0.0, 0.0, 128.0, 32.0]
 
 
 if __name__ == "__main__":

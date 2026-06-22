@@ -39,7 +39,7 @@ Windows:
 run_demo.bat
 ```
 
-The demo uses images in `demo_samples/`, packaged YOLO weights from `models/`, and packaged PP-OCRv6 medium recognition. Outputs are written to `outputs/demo_runs/` and are intentionally gitignored.
+The demo uses the bundled sample image in `demo_samples/`, packaged YOLO weights from `models/`, and packaged PP-OCRv6 medium recognition. Outputs are written to `outputs/demo_runs/` and are intentionally gitignored.
 
 For GPU runs, install a CUDA-compatible PyTorch build for your machine if the default wheel is not enough.
 

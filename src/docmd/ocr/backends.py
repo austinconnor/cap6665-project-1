@@ -203,8 +203,9 @@ def _projection_bands(has_ink: np.ndarray, max_gap: int, min_len: int) -> list[t
 def _split_text_lines(image: np.ndarray) -> list[tuple[np.ndarray, list[float]]]:
     height, width = image.shape[:2]
     threshold = _threshold_text(image)
-    min_row_ink = max(1, int(width * 0.003))
-    row_has_ink = (threshold > 0).sum(axis=1) > min_row_ink
+    row_ink = (threshold > 0).sum(axis=1)
+    min_row_ink = max(2, int(max(width * 0.003, row_ink.max(initial=0) * 0.10)))
+    row_has_ink = row_ink > min_row_ink
     bands = _projection_bands(row_has_ink, max_gap=2, min_len=2)
     if not bands:
         return [(image, [0.0, 0.0, float(width), float(height)])]
@@ -281,6 +282,14 @@ def _self_check() -> None:
     image[4:10, 320:370] = 0
     chunks = _split_line_chunks(image, [0.0, 0.0, 487.0, 14.0])
     assert len(chunks) == 3
+
+    two_line = np.full((40, 220, 3), 255, dtype=np.uint8)
+    for x in range(5, 180, 30):
+        two_line[5:12, x : x + 18] = 0
+    for x in range(5, 120, 30):
+        two_line[25:32, x : x + 18] = 0
+    two_line[14:23, 100:104] = 0
+    assert len(_split_text_lines(two_line)) == 2
 
 
 if __name__ == "__main__":

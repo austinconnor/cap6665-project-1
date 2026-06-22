@@ -160,7 +160,18 @@ def _threshold_text(image: np.ndarray) -> np.ndarray:
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
     gray = cv2.GaussianBlur(gray, (3, 3), 0)
     _value, threshold = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    return threshold
+    height, width = threshold.shape[:2]
+    horizontal = cv2.morphologyEx(
+        threshold,
+        cv2.MORPH_OPEN,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (max(30, width // 5), 1)),
+    )
+    vertical = cv2.morphologyEx(
+        threshold,
+        cv2.MORPH_OPEN,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (1, max(30, height // 5))),
+    )
+    return cv2.subtract(threshold, cv2.bitwise_or(horizontal, vertical))
 
 
 def _projection_bands(has_ink: np.ndarray, max_gap: int, min_len: int) -> list[tuple[int, int]]:
@@ -194,7 +205,7 @@ def _split_text_lines(image: np.ndarray) -> list[tuple[np.ndarray, list[float]]]
     threshold = _threshold_text(image)
     min_row_ink = max(1, int(width * 0.003))
     row_has_ink = (threshold > 0).sum(axis=1) > min_row_ink
-    bands = _projection_bands(row_has_ink, max_gap=max(1, height // 30), min_len=2)
+    bands = _projection_bands(row_has_ink, max_gap=2, min_len=2)
     if not bands:
         return [(image, [0.0, 0.0, float(width), float(height)])]
 

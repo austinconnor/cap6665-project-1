@@ -22,27 +22,25 @@ models/yolo26m-seg.pt                   # base segmentation model for training
 
 OCR uses PaddleOCR with `text_detection_model_name="PP-OCRv6_tiny_det"`, matching the safetensors model at https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_det_safetensors. Text recognition uses the matching `PP-OCRv6_tiny_rec` model because detection alone does not produce text.
 
-## Setup
+## Setup and Demo
 
-Use `uv` for Python commands:
+Use the included setup/run script. It installs `uv` if needed, runs `uv sync`, then starts the Streamlit demo.
 
-```powershell
-$env:UV_CACHE_DIR='.uv-cache'
-uv sync
+Linux/macOS:
+
+```bash
+./run_demo.sh
 ```
 
-For GPU runs, install a CUDA-compatible PyTorch build for your machine if the default wheel is not enough.
+Windows:
 
-## Demo
-
-Run the Streamlit demo:
-
-```powershell
-$env:UV_CACHE_DIR='.uv-cache'
-uv run python scripts/run_demo.py
+```bat
+run_demo.bat
 ```
 
 The demo uses images in `demo_samples/`, packaged YOLO weights from `models/`, and PaddleOCR PP-OCRv6 tiny OCR. Outputs are written to `outputs/demo_runs/` and are intentionally gitignored.
+
+For GPU runs, install a CUDA-compatible PyTorch build for your machine if the default wheel is not enough.
 
 ## Batch Inference
 
